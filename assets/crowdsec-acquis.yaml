@@ -1,0 +1,10 @@
+filenames:
+  - /containers/log/access.log
+  - /containers/log/traefik.log
+labels:
+  type: traefik
+---
+filenames:
+  - /var/log/auth.log
+labels:
+  type: syslog

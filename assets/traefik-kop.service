@@ -1,0 +1,11 @@
+[Unit]
+Description=traefik-kop - traefik service discovery
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/traefik-kop --hostname << HOSTNAME >> --bind-ip << CURRENT_IP >> --redis-addr << REDIS_IP >> --redis-pass << REDIS_PWD >> --verbose false
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

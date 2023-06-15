@@ -1,0 +1,5 @@
+/containers/log/*.log {
+  weekly
+  rotate 4
+  create
+}
