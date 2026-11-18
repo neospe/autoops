@@ -17,7 +17,9 @@ CURRENT_HOSTNAME = host.data.get('hostname', False)
 ARCH = host.run_shell_command('uname -m')[1][0]
 SERVICES = host.data.get('services', [])
 if 'traefik' not in SERVICES:
-    TRAEFIK_IP = host.data.get('traefik_host', False)
+    TRAEFIK_IPS = host.data.get('traefik_host', [])  # one bastion, or a list of them
+    if isinstance(TRAEFIK_IPS, str):
+        TRAEFIK_IPS = [TRAEFIK_IPS]
 DOCKERFILES_PATH = os.environ.get('DOCKERFILES_PATH')
 if not DOCKERFILES_PATH:
     print('NOTICE: please set the DOCKERFILES_PATH environment variable.')
@@ -192,29 +194,15 @@ files.put(
 )
 
 
-# install traefik-kop
+# install traefik-kop: one instance per bastion, so every bastion's traefik gets all routes
 
 if 'traefik' not in SERVICES:
 
     REDIS_PWD = os.environ.get('REDIS_PWD')
 
-    if not TRAEFIK_IP or not CURRENT_HOSTNAME or not REDIS_PWD:
+    if not TRAEFIK_IPS or not CURRENT_HOSTNAME or not REDIS_PWD:
         print('NOTICE: for traefik-kop, set hostname and traefik_host in the inventory, as well as the REDIS_PWD environment variable.')
         exit(1)
-
-    # get traefik overlay ip
-
-    traefik_node = inventory.get_host(TRAEFIK_IP)
-    if not traefik_node.connected:
-        traefik_node.connect()
-    cmd_stdout = traefik_node.run_shell_command('ip -4 -o addr show wgoverlay')[1]
-    TRAEFIK_OVERLAY_IP = cmd_stdout[0].split()[3].split('/')[0] if cmd_stdout else False
-
-    if not TRAEFIK_OVERLAY_IP:
-        print('ABORTED: failed to look up overlay ip.')
-        exit(1)
-
-    # setup traefik-kop
 
     files.put(
         name='setup traefik-kop',
@@ -223,18 +211,40 @@ if 'traefik' not in SERVICES:
         mode='755',
     )
 
-    with open('./assets/traefik-kop.service', 'r', encoding='utf-8') as f:
-        content = f.read()
-
-    content = content.replace('<< HOSTNAME >>', CURRENT_HOSTNAME).replace('<< TRAEFIK_IP >>', TRAEFIK_OVERLAY_IP).replace('<< REDIS_IP >>', TRAEFIK_OVERLAY_IP+':6379').replace('<< REDIS_PWD >>', REDIS_PWD).replace('<< OVERLAY_IP >>', OVERLAY_IP)
-
     files.put(
-        src=StringIO(content),
-        dest='/etc/systemd/system/traefik-kop.service',
-        force=True
+        src='./assets/traefik-kop@.service',
+        dest='/etc/systemd/system/traefik-kop@.service',
     )
 
-    server.shell(name='enable traefik-kop', commands=['systemctl daemon-reload', 'systemctl enable traefik-kop'])
+    # older single-instance setup
+    server.shell(name='remove traefik-kop.service', commands=['if [ -f /etc/systemd/system/traefik-kop.service ]; then systemctl disable --now traefik-kop; rm /etc/systemd/system/traefik-kop.service; fi'])
+
+    files.directory(path='/etc/traefik-kop', present=True, mode='700')
+
+    for TRAEFIK_IP in TRAEFIK_IPS:
+
+        # get traefik overlay ip
+
+        traefik_node = inventory.get_host(TRAEFIK_IP)
+        if not traefik_node.connected:
+            traefik_node.connect()
+        cmd_stdout = traefik_node.run_shell_command('ip -4 -o addr show wgoverlay')[1]
+        TRAEFIK_OVERLAY_IP = cmd_stdout[0].split()[3].split('/')[0] if cmd_stdout else False
+
+        if not TRAEFIK_OVERLAY_IP:
+            print('ABORTED: failed to look up overlay ip of', TRAEFIK_IP)
+            exit(1)
+
+        # settings incl. the redis password in a root-only file
+
+        files.put(
+            name='configure traefik-kop for '+TRAEFIK_IP,
+            src=StringIO('KOP_HOSTNAME='+CURRENT_HOSTNAME+'\nBIND_IP='+OVERLAY_IP+'\nREDIS_ADDR='+TRAEFIK_OVERLAY_IP+':6379\nREDIS_PASS='+REDIS_PWD+'\n'),
+            dest='/etc/traefik-kop/'+TRAEFIK_IP+'.env',
+            mode='600',
+        )
+
+    server.shell(name='enable traefik-kop', commands=['systemctl daemon-reload'] + ['systemctl enable traefik-kop@'+ip for ip in TRAEFIK_IPS])
 
 
 # install docker-rollout (currently handled by deploy.py)

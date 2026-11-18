@@ -1,0 +1,13 @@
+[Unit]
+Description=traefik-kop - traefik service discovery for %i
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/traefik-kop/%i.env
+ExecStart=/usr/local/bin/traefik-kop
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
