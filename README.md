@@ -106,6 +106,7 @@ make services-up
 - **Variables**: The group compose file can contain templated variables: `<< OVERLAY_IP >>` and `<< HOSTNAME >>` are filled in per host, everything else comes from the environment (or another secrets handling system feeding it). Examples: `<< GARAGE_KEY >>`, `<< GARAGE_SECRET >>`, `<< REDIS_PWD >>`, `<< POSTGRES_PWD >>`, `<< SMTP_PWD >>`.
 - **Traefik**: Includes CrowdSec integration (with Docker-specific config). Debian's `crowdsec-firewall-bouncer` package runs in nftables mode, which covers host-network containers; the packagecloud package runs in iptables mode, for which the bouncer is added to the `DOCKER-USER` chain.
 - **traefik-kop**: Requires Redis running on each `traefik_host`, reachable over the overlay, and the same `REDIS_PWD` when running `services`. Its settings, including the password, are in `/etc/traefik-kop/<bastion>.env` (root only). It is started by `services-up`.
+- **Health checks**: Give each service a Traefik health check via labels (see `examples/dockerfiles/worker.yml`); a worker that stops answering is then out of rotation within seconds instead of running requests into timeouts.
 - **TLS**: The example bastion gets certificates from Let's Encrypt (HTTP challenge, stored in `/containers/traefik/acme.json`) for the `Host()` rules of the published routers, and redirects HTTP to HTTPS.
 - **Docker**: Uses host network mode. Services are configured to run on the overlay network. `services.py` dynamically injects overlay hostname and IP into Compose files (see Variables).
 

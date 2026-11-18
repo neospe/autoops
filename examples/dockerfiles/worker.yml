@@ -12,3 +12,6 @@ services:
       - traefik.http.routers.whoami.entrypoints=websecure
       - traefik.http.routers.whoami.tls.certresolver=le
       - traefik.http.services.whoami.loadbalancer.server.port=8000
+      - traefik.http.services.whoami.loadbalancer.healthcheck.path=/
+      - traefik.http.services.whoami.loadbalancer.healthcheck.interval=2s
+      - traefik.http.services.whoami.loadbalancer.healthcheck.timeout=1s
