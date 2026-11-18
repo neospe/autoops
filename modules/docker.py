@@ -9,6 +9,16 @@ from pyinfra.operations import files, server
 
 # install docker
 
+# pinned versions (tested); DOCKER_LATEST=1 takes the newest from download.docker.com instead
+VERSIONS = {
+    'containerd.io': '2.4.2',
+    'docker-ce': '29.10.0',
+    'docker-ce-cli': '29.10.0',
+    'docker-buildx-plugin': '0.39.0',
+    'docker-compose-plugin': '5.8.0',
+}
+LATEST = os.environ.get('DOCKER_LATEST')
+
 print('collecting files')
 
 # find out debian codename and architecture
@@ -27,12 +37,12 @@ if not os.path.exists(assets_path):
 url = 'https://download.docker.com/linux/debian/dists/'+codename+'/pool/stable/'+ARCH+'/'
 response = subprocess.run(['curl', '-fsSL', url], capture_output=True, text=True).stdout
 
-packages = ['containerd.io', 'docker-ce', 'docker-ce-cli', 'docker-buildx-plugin', 'docker-compose-plugin']
+packages = list(VERSIONS)
 selected_packages = {}
 selected_versions = {}
 for filename in set(re.findall(r'href="([^"/]+\.deb)"', response)):
     name, version, _ = filename.split('_')
-    if name in packages:
+    if name in packages and (LATEST or version.split(':')[-1].split('-')[0] == VERSIONS[name]):
         vv = [int(n) for n in re.findall(r'\d+', version.split('-')[0].split(':')[-1])]  # compare version numbers
         if name not in selected_packages or vv > selected_versions[name]:
             selected_packages[name] = filename  # save latest version

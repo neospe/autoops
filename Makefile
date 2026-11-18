@@ -9,7 +9,7 @@ SHA256 = $(shell command -v sha256sum || echo shasum -a 256)
 
 nodes:
 	$(PYINFRA) inventory.py modules/basic.py $(LIMIT)
-	$(PYINFRA) inventory.py modules/docker.py $(LIMIT)
+	DOCKER_LATEST=$(DOCKER_LATEST) $(PYINFRA) inventory.py modules/docker.py $(LIMIT)
 	FIRST_IP=$(FIRST_IP) $(PYINFRA) inventory.py modules/wesher.py $(LIMIT)
 	FIRST_IP=$(FIRST_IP) $(PYINFRA) inventory.py modules/garage.py $(LIMIT)
 	FIRST_IP=$(FIRST_IP) $(PYINFRA) inventory.py modules/garage-layout.py $(LIMIT)
