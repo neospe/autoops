@@ -168,6 +168,7 @@ make services-up
 - Host network mode: no isolation between containers on a host, and services on one host need distinct ports.
 - No real dry run: the modules run commands on the hosts while pyinfra prepares the deploy, so `pyinfra --dry` still changes things.
 - Removing a node is manual (`garage layout remove`, stop wesher).
-- No backups or monitoring beyond the logs in `/containers/log`.
+- Monitoring: the logs in `/containers/log`, read with `lnav` over SSH; no metrics or alerting.
+- Backups: data in Garage is replicated across zones, but replication is not a backup (deletions replicate too); keep an offsite copy, e.g. via rsync.
 - Supply chain: `assets/SHA256SUMS` was pinned on first download (Garage publishes no checksums); Docker packages are pinned by version; base images come from a registry.
 - pyinfra 2: pyinfra 3 needs Python 3.10+ and API changes in every module.
