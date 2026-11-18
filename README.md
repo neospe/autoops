@@ -22,7 +22,7 @@ curl http://203.0.113.10/                    # whoami on the worker, routed by t
 
 - `FIRST_IP` is the node the mesh is bootstrapped from, here the bastion.
 - `make nodes` prints the S3 access key for the `autoops` bucket once. Save it, and keep `REDIS_PWD` for later `services` runs.
-- `basic.py` enables ufw with incoming traffic denied. It opens the inventory's `ssh_port` (default 22) first, then HTTP(S), Garage (3900–3902), wesher (7946, 51820) and everything on the overlay interface.
+- `basic.py` enables ufw with incoming traffic denied. It opens the inventory's `ssh_port` (default 22) first, then HTTP(S), wesher (7946, 51820) and everything on the overlay interface. Garage listens on the overlay only.
 - `make check` compiles the modules without touching any host.
 - Downloads use `curl`, so `ALL_PROXY` works for them, e.g. `ALL_PROXY=socks5h://127.0.0.1:9050 make assets`.
 

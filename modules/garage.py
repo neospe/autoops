@@ -56,8 +56,8 @@ with open('./assets/garage-rpc-secret', 'r') as f:
 
 # place binary (immediately: the steps below run it while the deploy is still being prepared)
 
-host.put_file('./assets/'+ARCH+'/garage', '/usr/local/bin/garage')
-host.run_shell_command('chmod +x /usr/local/bin/garage')
+host.put_file('./assets/'+ARCH+'/garage', '/usr/local/bin/garage.new')  # a running binary can't be overwritten, only replaced
+host.run_shell_command('chmod +x /usr/local/bin/garage.new && mv -f /usr/local/bin/garage.new /usr/local/bin/garage')
 host.run_shell_command('mkdir -p /var/lib/garage')
 
 

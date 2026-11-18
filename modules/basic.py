@@ -36,9 +36,6 @@ server.shell(
         'ufw allow '+str(host.data.get('ssh_port', 22))+'/tcp',  # before enabling, or we lock ourselves out
         'ufw allow http',
         'ufw allow https',
-        'ufw allow 3900',
-        'ufw allow 3901',
-        'ufw allow 3902',
         'ufw allow 7946',
         'ufw allow 51820',
         'ufw allow in on wgoverlay',  # the overlay network is trusted: services, redis, garage rpc
