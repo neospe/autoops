@@ -74,6 +74,6 @@ else:
             exit(1)
 
 
-    if SERVICE in ['traefik', 'webapp']:
+    if SERVICE == 'traefik':
         print('clearing cache')
         host.run_shell_command('rm -rf /containers/traefik/traefik-cache/*')

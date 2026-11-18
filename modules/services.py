@@ -154,22 +154,6 @@ for service in SERVICES:
     if service == 'redis':
         server.shell(name='redis files', commands=['mkdir -p /containers/redis && touch /containers/log/redis.log && if [ -f /containers/build/redis/redis.rdb ]; then mv /containers/build/redis/redis.rdb /containers/redis/redis.rdb && chmod 644 /containers/redis/redis.rdb; fi'])
 
-    if service == 'webapp':
-        server.shell(name='webapp files', commands=['touch /containers/log/webapp.log && mv /containers/build/webapp/webapp.sql /containers/postgres/init && chown 70:70 /containers/postgres/init/webapp.sql'])
-
-    if service == 'torchserve':
-        server.shell(name='torchserve files', commands=['touch /containers/log/access_log.log /containers/log/ts_log.log'])
-
-    if service == 'mattermost':
-        server.shell(name='mattermost files', commands=['mkdir -p /containers/mattermost/config && mkdir -p /containers/mattermost/data && mkdir -p /containers/mattermost/logs && mkdir -p /containers/mattermost/plugins && mkdir -p /containers/mattermost/client/plugins && mkdir -p /containers/mattermost/bleve-indexes && chown -R 2000:2000 /containers/mattermost && mv /containers/build/mattermost/mattermost.sql /containers/postgres/init && chown 70:70 /containers/postgres/init/mattermost.sql && chmod +x /containers/build/mattermost/entrypoint.sh'])
-
-        if os.path.exists('./assets/mattermost-config.json'):
-            files.put(
-                src='./assets/mattermost-config.json',
-                dest='/containers/mattermost/config/config.json',
-            )
-            server.shell(name='mattermost config', commands=['chown -R 2000:2000 /containers/mattermost/config/config.json'])
-
 
 # compile compose file
 

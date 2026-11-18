@@ -70,7 +70,7 @@ make services-up
 ### 3. Maintain
 - **Rebuild a specific container** on all hosts that run it:
   ```bash
-  make SERVICE="webapp" deploy
+  make SERVICE="whoami" deploy
   ```
 - **Update/Upgrade APT packages** for specific host groups (e.g., `db*`):
   ```bash
