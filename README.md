@@ -107,6 +107,7 @@ make services-up
 - **Traefik**: Includes CrowdSec integration (with Docker-specific config). Debian's `crowdsec-firewall-bouncer` package runs in nftables mode, which covers host-network containers; the packagecloud package runs in iptables mode, for which the bouncer is added to the `DOCKER-USER` chain.
 - **traefik-kop**: Requires Redis running on each `traefik_host`, reachable over the overlay, and the same `REDIS_PWD` when running `services`. Its settings, including the password, are in `/etc/traefik-kop/<bastion>.env` (root only). It is started by `services-up`.
 - **Health checks**: Give each service a Traefik health check via labels (see `examples/dockerfiles/worker.yml`); a worker that stops answering is then out of rotation within seconds instead of running requests into timeouts.
+- **One service on several workers**: add the label `kop.merge-lbs=true`, so traefik-kop appends each worker to the service's load balancer instead of replacing it.
 - **TLS**: The example bastion gets certificates from Let's Encrypt (HTTP challenge, stored in `/containers/traefik/acme.json`) for the `Host()` rules of the published routers, and redirects HTTP to HTTPS.
 - **Docker**: Uses host network mode. Services are configured to run on the overlay network. `services.py` dynamically injects overlay hostname and IP into Compose files (see Variables).
 
