@@ -1,0 +1,26 @@
+services:
+
+  traefik:
+    build: ./traefik
+    container_name: traefik
+    network_mode: host
+    restart: unless-stopped
+    command:
+      - --entrypoints.web.address=:80
+      - --providers.redis.endpoints=<< OVERLAY_IP >>:6379
+      - --providers.redis.password=<< REDIS_PWD >>
+      - --accesslog.filepath=/containers/log/access.log
+      - --log.filepath=/containers/log/traefik.log
+    volumes:
+      - /containers/log:/containers/log
+      - /containers/traefik:/containers/traefik
+
+  redis:
+    build: ./redis
+    container_name: redis
+    network_mode: host
+    restart: unless-stopped
+    command: redis-server --bind << OVERLAY_IP >> --requirepass << REDIS_PWD >> --dir /data
+    volumes:
+      - /containers/redis:/data
+      - /containers/log:/containers/log

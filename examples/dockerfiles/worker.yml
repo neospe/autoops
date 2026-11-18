@@ -1,0 +1,13 @@
+services:
+
+  whoami:
+    build: ./whoami
+    container_name: whoami
+    network_mode: host
+    restart: unless-stopped
+    command: --port 8000
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.whoami.rule=PathPrefix(`/`)
+      - traefik.http.routers.whoami.entrypoints=web
+      - traefik.http.services.whoami.loadbalancer.server.port=8000
