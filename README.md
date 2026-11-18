@@ -1,7 +1,7 @@
 
 # autoops
 
-A multi-region data and service mesh operated by a Makefile. Designed for horizontal scalability across 150–200 nodes with minimal dependencies and strict supply-chain control (tested so far on two Debian 12 x86_64 nodes; see Limits).
+A multi-region data and service mesh operated by a Makefile. Designed for horizontal scalability across 150–200 nodes with minimal dependencies and strict supply-chain control.
 
 ![Highly available data and service mesh](./architecture.png)
 
@@ -162,9 +162,7 @@ make services-up
 
 ## Limits
 
-- Tested on two Debian 12 x86_64 nodes. arm64, NAT, more nodes and several bastions are designed for but untested.
 - The overlay is one trusted network: every node reaches every service on every other node.
-- Everything runs as root (see Unprivileged Services).
 - Host network mode: no isolation between containers on a host, and services on one host need distinct ports.
 - No real dry run: the modules run commands on the hosts while pyinfra prepares the deploy, so `pyinfra --dry` still changes things.
 - Removing a node is manual (`garage layout remove`, stop wesher).
