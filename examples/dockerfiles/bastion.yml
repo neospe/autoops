@@ -7,6 +7,10 @@ services:
     restart: unless-stopped
     command:
       - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.le.acme.storage=/containers/traefik/acme.json
       - --providers.redis.endpoints=<< OVERLAY_IP >>:6379
       - --providers.redis.password=<< REDIS_PWD >>
       - --accesslog.filepath=/containers/log/access.log
