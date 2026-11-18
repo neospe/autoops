@@ -1,2 +1,2 @@
-bs4
-pyinfra
+pyinfra==2.9.2
+setuptools<81  # pyinfra 2 imports pkg_resources
