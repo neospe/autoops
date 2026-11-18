@@ -1,7 +1,7 @@
 
 # autoops
 
-A multi-region data and service mesh operated by a Makefile. Designed for horizontal scalability across 150–200 nodes with minimal dependencies and strict supply-chain control.
+A multi-region data and service mesh operated by a Makefile. Designed for horizontal scalability across 150–200 nodes with minimal dependencies and strict supply-chain control (tested so far on two Debian 12 x86_64 nodes; see Limits).
 
 ![Highly available data and service mesh](./architecture.png)
 
@@ -15,9 +15,10 @@ make assets                                  # wesher, garage, traefik-kop for x
 cp examples/inventory.py inventory.py        # your hosts: IPs, ssh_user / ssh_port / ssh_key, hostname, zone
 make FIRST_IP="203.0.113.10" nodes           # base system + firewall, docker, overlay network, s3 cluster
 export REDIS_PWD="$(openssl rand -hex 16)"   # shared by redis on the bastion and traefik-kop on the workers
+export DOMAIN="203-0-113-10.sslip.io"        # any name pointing at the bastion; sslip.io works without your own domain
 make DOCKERFILES_PATH="examples/dockerfiles" services
 make services-up
-curl http://203.0.113.10/                    # whoami on the worker, routed by traefik on the bastion over the overlay
+curl https://$DOMAIN/                        # whoami on the worker, routed by traefik on the bastion over the overlay, Let's Encrypt cert
 ```
 
 - `FIRST_IP` is the node the mesh is bootstrapped from, here the bastion.
@@ -28,7 +29,7 @@ curl http://203.0.113.10/                    # whoami on the worker, routed by t
 
 ## Architecture
 
-- **Scalability**: Fully horizontally scalable services within a mesh of up to 150–200 nodes.
+- **Scalability**: Horizontally scalable services within a mesh designed for up to 150–200 nodes.
 - **Core Mesh Services**:
   - `wesher`: WireGuard mesh overlay network.
   - `garage`: Distributed S3-compatible object storage.
@@ -37,7 +38,7 @@ curl http://203.0.113.10/                    # whoami on the worker, routed by t
 - **High Availability**: Multiple parallel Traefik/Bastion hosts ensure redundancy.
   - **Ingress**: Handled by a load balancer, VPS providers (floating IPs across DCs) or DNS servers with health checks.
   - **Stateless Design**: Identical Traefik configurations and shared backend access eliminate the need for synchronized state between instances.
-  - **Redis Sync**: Periodic synchronization of Redis instances enables graceful failover (e.g., by updating `--redis-addr` in traefik-kop.service on each host).
+  - **No Redis Sync**: Set `traefik_host` to a list of bastions; every worker then runs one `traefik-kop@<bastion>` per bastion and publishes its routes to each bastion's Redis, so any bastion can take the traffic.
 - **Bootstrapping**: The mesh is initialized from a single node marked by the `FIRST_IP` environment variable. This IP is used only during setup to bootstrap WireGuard and Garage connections. All other traffic routes through overlay IPs. `wesher.py` and `garage.py` can verify or update the first node IP via DNS. Hosts are prepared in parallel; the other nodes wait for the first one, and `garage-layout.py` applies the storage layout once all nodes have joined.
 
 ## Supply Chain
@@ -92,7 +93,7 @@ make services-up
   - Supports DynDNS by resolving `public_dns` during setup steps requiring public routable addresses.
 - **`services`** (list): Service names corresponding to subdirectories in `DOCKERFILES_PATH`.
   - If you have pet servers rather than cattle, put every host in its own group, each of which has its own compose YAML.
-  - **Traefik**: Requires `'traefik'` in the services list OR a `traefik_host` IP attribute (the inventory name of a bastion). If neither is present, `services.py` stops with a notice.
+  - **Traefik**: Requires `'traefik'` in the services list OR a `traefik_host` attribute (the inventory name of a bastion, or a list of them). If neither is present, `services.py` stops with a notice.
 - **`zone`**: Defines Garage data replication zones. `assets/garage.toml` keeps 2 copies of everything (`replication_factor`); optimal is a minimum of 3 nodes across 3 locations.
 - **SSH Configuration**: pyinfra's connection settings per host: `ssh_user`, `ssh_port` and `ssh_key` (path to the private key; `ssh_key_password` if it has one).
   - Without `ssh_key`, pyinfra uses your SSH agent and the default keys in `~/.ssh`.
@@ -104,10 +105,12 @@ make services-up
   - Structure: `DOCKERFILES_PATH/<service>/Dockerfile` and `DOCKERFILES_PATH/<inventory-group>.yml`.
 - **Variables**: The group compose file can contain templated variables: `<< OVERLAY_IP >>` and `<< HOSTNAME >>` are filled in per host, everything else comes from the environment (or another secrets handling system feeding it). Examples: `<< GARAGE_KEY >>`, `<< GARAGE_SECRET >>`, `<< REDIS_PWD >>`, `<< POSTGRES_PWD >>`, `<< SMTP_PWD >>`.
 - **Traefik**: Includes CrowdSec integration (with Docker-specific config). Debian's `crowdsec-firewall-bouncer` package runs in nftables mode, which covers host-network containers; the packagecloud package runs in iptables mode, for which the bouncer is added to the `DOCKER-USER` chain.
-- **traefik-kop**: Requires Redis running on the `traefik_host`, reachable over the overlay, and the same `REDIS_PWD` when running `services`. It is started by `services-up`.
+- **traefik-kop**: Requires Redis running on each `traefik_host`, reachable over the overlay, and the same `REDIS_PWD` when running `services`. Its settings, including the password, are in `/etc/traefik-kop/<bastion>.env` (root only). It is started by `services-up`.
+- **TLS**: The example bastion gets certificates from Let's Encrypt (HTTP challenge, stored in `/containers/traefik/acme.json`) for the `Host()` rules of the published routers, and redirects HTTP to HTTPS.
 - **Docker**: Uses host network mode. Services are configured to run on the overlay network. `services.py` dynamically injects overlay hostname and IP into Compose files (see Variables).
 
 ### Deployment Notes
+- The `deploy` target builds the new image on all hosts in parallel, then swaps the containers one host at a time and waits until each new container runs (and is healthy, if it has a healthcheck). A service on several hosts stays reachable; on a single host it is gone for a second or two.
 - The `deploy` target strictly rebuilds containers; it does not update Dockerfiles or assets. Assumes Dockerfiles pull updates from internal version control or object stores.
 - To update Dockerfiles: Run `make DOCKERFILES_PATH="../dockerfiles" services`.
 
@@ -123,7 +126,7 @@ make services-up
   - _Note_: `chown` operations require UID/GID from inside the container context.
 
 - Extend `deploy.py`
-  - Graceful Rollouts: Use `docker-rollout` for draining containers during deployment.
+  - Graceful Rollouts on one host: `docker-rollout` (scale up, drain, remove the old container) needs bridge networking and no `container_name`, so it does not fit host network mode.
   - Cache Clearing: Clears caches for Traefik and web services (add your webapp logic here).
 
 - Maintenance (`care`)
@@ -157,3 +160,14 @@ make services-up
   - Logging: Implement a log collection service forwarding to a Grafana host.
   - Secrets Management: Integrated secrets handling system.
 
+## Limits
+
+- Tested on two Debian 12 x86_64 nodes. arm64, NAT, more nodes and several bastions are designed for but untested.
+- The overlay is one trusted network: every node reaches every service on every other node.
+- Everything runs as root (see Unprivileged Services).
+- Host network mode: no isolation between containers on a host, and services on one host need distinct ports.
+- No real dry run: the modules run commands on the hosts while pyinfra prepares the deploy, so `pyinfra --dry` still changes things.
+- Removing a node is manual (`garage layout remove`, stop wesher).
+- No backups or monitoring beyond the logs in `/containers/log`.
+- Supply chain: `assets/SHA256SUMS` was pinned on first download (Garage publishes no checksums); Docker packages are pinned by version; base images come from a registry.
+- pyinfra 2: pyinfra 3 needs Python 3.10+ and API changes in every module.
