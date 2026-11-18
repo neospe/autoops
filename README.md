@@ -5,6 +5,22 @@ A multi-region data and service mesh operated by a Makefile. Designed for horizo
 
 ![Highly available data and service mesh](./architecture.png)
 
+## Quickstart
+
+Two or more Debian hosts with root SSH access; pyinfra runs from your machine.
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+make assets                                  # wesher, garage, traefik-kop for x86_64 + aarch64, checksummed
+cp examples/inventory.py inventory.py        # fill in your hosts
+make FIRST_IP="203.0.113.10" nodes           # base system, docker, overlay network, s3 cluster
+REDIS_PWD="..." make DOCKERFILES_PATH="examples/dockerfiles" services
+make services-up
+curl http://203.0.113.10/                    # whoami on the worker, routed by traefik on the bastion over the overlay
+```
+
+`make check` compiles the modules without touching any host. Downloads use `curl`, so `ALL_PROXY` works for them, e.g. `ALL_PROXY=socks5h://127.0.0.1:9050 make assets`.
+
 ## Architecture
 
 - **Scalability**: Fully horizontally scalable services within a mesh of up to 150–200 nodes.
@@ -27,8 +43,8 @@ A multi-region data and service mesh operated by a Makefile. Designed for horizo
 ## Usage
 
 ### 1. Prepare
-- Define inventory in `inventory.py` (refer to Pyinfra documentation).
-- Create a `dockerfiles/` directory containing:
+- Define inventory in `inventory.py` (refer to Pyinfra documentation; start from `examples/inventory.py`).
+- Create a `dockerfiles/` directory (see `examples/dockerfiles`) containing:
   - Subdirectories for each service with a `Dockerfile` and build assets.
   - An `inventory-group.yml` Docker Compose file, matching the name of the group in `inventory.py`.
 
@@ -58,12 +74,13 @@ make services-up
 
 ### Prerequisites
 - Debian-based system with `apt` and `systemd`.
-- Prebuilt binaries located in `assets/aarch64` and `assets/x86_64`: `wesher`, `garage`, `traefik-kop`.
+- Prebuilt binaries located in `assets/aarch64` and `assets/x86_64`: `wesher`, `garage`, `traefik-kop`. `make assets` downloads the pinned releases and checks them against `assets/SHA256SUMS`.
+- pyinfra 2 (`requirements.txt`), which still runs on older system Pythons such as macOS's 3.9.
 
 ### Inventory Attributes
 - **`hostname`** (string): Used for hostname resolution within the overlay network.
 - **`behind_nat`** (bool): Enables LAN service sharing via a Bastion node (Tailscale-like functionality).
-  - Requires `wesher --advertise-addr` (custom build: [neospe/wesher](https://github.com/neospe/wesher)).
+  - Requires `wesher --advertise-addr`, which upstream wesher does not have: build [neospe/wesher](https://github.com/neospe/wesher) yourself and replace `assets/<arch>/wesher`.
   - Any node can be behind NAT, including the first node. Requires `public_ip` and SSH port forwarding.
   - Supports DynDNS by resolving `public_dns` during setup steps requiring public routable addresses.
 - **`services`** (list): Service names corresponding to subdirectories in `DOCKERFILES_PATH`.
@@ -78,7 +95,7 @@ make services-up
 - **Assumptions**:
   - `DOCKERFILES_PATH` is defined in the environment or Makefile.
   - Structure: `DOCKERFILES_PATH/<service>/Dockerfile` and `DOCKERFILES_PATH/<inventory-group>.yml`.
-- **Variables**: Assets can contain templated variables injected from the environment or another secrets handling system. Examples: `<< OVERLAY_IP >>`, `<< HOSTNAME >>`, `<< GARAGE_KEY >>`, `<< GARAGE_SECRET >>`, `<< REDIS_IP >>`, `<< REDIS_PWD >>`, `<< POSTGRES_PWD >>`, `<< SMTP_PWD >>`, `<< TRAEFIK_IP >>`.
+- **Variables**: The group compose file can contain templated variables: `<< OVERLAY_IP >>` and `<< HOSTNAME >>` are filled in per host, everything else comes from the environment (or another secrets handling system feeding it). Examples: `<< GARAGE_KEY >>`, `<< GARAGE_SECRET >>`, `<< REDIS_PWD >>`, `<< POSTGRES_PWD >>`, `<< SMTP_PWD >>`.
 - **Traefik**: Includes CrowdSec integration (with Docker-specific config). `traefik-kop` requires Redis running at the `traefik_host`.
 - **Docker**: Uses host network mode. Services are configured to run on the overlay network. `services.py` dynamically injects overlay hostname and IP into Compose files (see Variables).
 
@@ -89,12 +106,12 @@ make services-up
 ## Extendability
 
 - (Almost) Full ARM64 Support:
-  - `docker.py`: Needs to fetch binaries from `https://download.docker.com/linux/debian/dists/<codename>/pool/stable/arm64`.
-  - `services.py`: Needs to use [cs-firewall-bouncer-armv7](https://github.com/frigori/cs-firewall-bouncer-armv7).
+  - `docker.py` and the binaries in `assets/` cover x86_64 and aarch64.
+  - `services.py`: Debian's `crowdsec-firewall-bouncer` package covers both; the packagecloud fallback is amd64 only (alternative: [cs-firewall-bouncer-armv7](https://github.com/frigori/cs-firewall-bouncer-armv7)).
 
 - Extend `services.py`
-  - Environment Injection: Injects variables into Compose files, Dockerfiles, and assets.
-  - Database State: Supports restoration for Postgres and Redis.
+  - Environment Injection: Inject variables into Dockerfiles and assets as well (compose files already get them).
+  - Database State: Restore Postgres and Redis state.
   - _Note_: `chown` operations require UID/GID from inside the container context.
 
 - Extend `deploy.py`
@@ -124,11 +141,11 @@ make services-up
        LimitNOFILE=42000
        ```
   - Docker
-     - Supports rootless container execution.
+     - Rootless containers.
 
 - Roadmap
   - Services: Generate Compose files dynamically from snippets and inventory service definitions.
-  - Inventory: Model using CUE language to allow for automated inventory generation.
+  - Inventory: Model in CUE.
   - Logging: Implement a log collection service forwarding to a Grafana host.
   - Secrets Management: Integrated secrets handling system.
 
