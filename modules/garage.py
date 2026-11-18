@@ -48,7 +48,7 @@ WESHER_IP = cmd_stdout[0].split()[3].split('/')[0] if cmd_stdout else False
 
 # one rpc secret for the whole cluster, kept next to the other local state in assets/
 if not os.path.exists('./assets/garage-rpc-secret'):
-    with open('./assets/garage-rpc-secret', 'w') as f:
+    with os.fdopen(os.open('./assets/garage-rpc-secret', os.O_WRONLY | os.O_CREAT, 0o600), 'w') as f:
         f.write(os.urandom(32).hex())
 with open('./assets/garage-rpc-secret', 'r') as f:
     RPC_SECRET = f.read().strip()
