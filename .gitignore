@@ -1,6 +1,6 @@
 .venv/
 __pycache__/
-inventory.py
+/inventory.py
 # downloaded binaries and packages, local cluster state
 assets/x86_64/
 assets/aarch64/
