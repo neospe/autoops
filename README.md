@@ -7,19 +7,24 @@ A multi-region data and service mesh operated by a Makefile. Designed for horizo
 
 ## Quickstart
 
-Two or more Debian hosts with root SSH access; pyinfra runs from your machine.
+You need two or more Debian hosts with root SSH access, and `python3`, `make` and `curl` on your machine; pyinfra runs from there.
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 make assets                                  # wesher, garage, traefik-kop for x86_64 + aarch64, checksummed
-cp examples/inventory.py inventory.py        # fill in your hosts
-make FIRST_IP="203.0.113.10" nodes           # base system, docker, overlay network, s3 cluster
-REDIS_PWD="..." make DOCKERFILES_PATH="examples/dockerfiles" services
+cp examples/inventory.py inventory.py        # your hosts: IPs, ssh_user / ssh_port / ssh_key, hostname, zone
+make FIRST_IP="203.0.113.10" nodes           # base system + firewall, docker, overlay network, s3 cluster
+export REDIS_PWD="$(openssl rand -hex 16)"   # shared by redis on the bastion and traefik-kop on the workers
+make DOCKERFILES_PATH="examples/dockerfiles" services
 make services-up
 curl http://203.0.113.10/                    # whoami on the worker, routed by traefik on the bastion over the overlay
 ```
 
-`make check` compiles the modules without touching any host. Downloads use `curl`, so `ALL_PROXY` works for them, e.g. `ALL_PROXY=socks5h://127.0.0.1:9050 make assets`.
+- `FIRST_IP` is the node the mesh is bootstrapped from, here the bastion.
+- `make nodes` prints the S3 access key for the `autoops` bucket once. Save it, and keep `REDIS_PWD` for later `services` runs.
+- `basic.py` enables ufw with incoming traffic denied. It opens the inventory's `ssh_port` (default 22) first, then HTTP(S), Garage (3900–3902), wesher (7946, 51820) and everything on the overlay interface.
+- `make check` compiles the modules without touching any host.
+- Downloads use `curl`, so `ALL_PROXY` works for them, e.g. `ALL_PROXY=socks5h://127.0.0.1:9050 make assets`.
 
 ## Architecture
 
@@ -28,17 +33,18 @@ curl http://203.0.113.10/                    # whoami on the worker, routed by t
   - `wesher`: WireGuard mesh overlay network.
   - `garage`: Distributed S3-compatible object storage.
   - Docker, Traefik, Redis, and `traefik-kop`.
-- **Service Discovery**: Managed by Traefik and Redis (on bastion hosts) and `traefik-kop` (on worker nodes).
+- **Service Discovery**: Managed by Traefik and Redis (on bastion hosts) and `traefik-kop` (on worker nodes). `traefik-kop` reads the `traefik.*` labels of the local containers and writes routers and services, with the worker's overlay IP as backend, into the bastion's Redis; Traefik uses that Redis as its provider. Redis listens on the overlay IP only.
 - **High Availability**: Multiple parallel Traefik/Bastion hosts ensure redundancy.
   - **Ingress**: Handled by a load balancer, VPS providers (floating IPs across DCs) or DNS servers with health checks.
   - **Stateless Design**: Identical Traefik configurations and shared backend access eliminate the need for synchronized state between instances.
   - **Redis Sync**: Periodic synchronization of Redis instances enables graceful failover (e.g., by updating `--redis-addr` in traefik-kop.service on each host).
-- **Bootstrapping**: The mesh is initialized from a single node marked by the `FIRST_IP` environment variable. This IP is used only during setup to bootstrap WireGuard and Garage connections. All other traffic routes through overlay IPs. `wesher/garage.py` can verify or update the first node IP via DNS.
+- **Bootstrapping**: The mesh is initialized from a single node marked by the `FIRST_IP` environment variable. This IP is used only during setup to bootstrap WireGuard and Garage connections. All other traffic routes through overlay IPs. `wesher.py` and `garage.py` can verify or update the first node IP via DNS. Hosts are prepared in parallel; the other nodes wait for the first one, and `garage-layout.py` applies the storage layout once all nodes have joined.
 
 ## Supply Chain
 
 - `docker.py`: Avoids external APT repositories by downloading packages directly from the official website.
-- `services.py`: Avoids Docker Hub by building containers from local Dockerfiles.
+- `services.py`: Avoids Docker Hub by building containers from local Dockerfiles. Their base images still come from a registry; the examples use official images, point `FROM` at your own registry or mirror if needed.
+- `make assets`: Pinned releases, checked against `assets/SHA256SUMS`.
 
 ## Usage
 
@@ -46,14 +52,14 @@ curl http://203.0.113.10/                    # whoami on the worker, routed by t
 - Define inventory in `inventory.py` (refer to Pyinfra documentation; start from `examples/inventory.py`).
 - Create a `dockerfiles/` directory (see `examples/dockerfiles`) containing:
   - Subdirectories for each service with a `Dockerfile` and build assets.
-  - An `inventory-group.yml` Docker Compose file, matching the name of the group in `inventory.py`.
+  - A `<group>.yml` Docker Compose file for each group in `inventory.py` (e.g. `bastion.yml`, `worker.yml`).
 
 ### 2. Deploy
 ```bash
 # Bootstrap nodes and mesh
 make FIRST_IP="x.x.x.x" nodes
 
-# Build services from local Dockerfiles
+# Build services from local Dockerfiles (plus the variables your compose files use, e.g. REDIS_PWD)
 make DOCKERFILES_PATH="../dockerfiles" services
 
 # Start services
@@ -61,7 +67,7 @@ make services-up
 ```
 
 ### 3. Maintain
-- **Rebuild a specific container** across all hosts:
+- **Rebuild a specific container** on all hosts that run it:
   ```bash
   make SERVICE="webapp" deploy
   ```
@@ -69,6 +75,7 @@ make services-up
   ```bash
   make GROUP="db*" care
   ```
+- `GROUP` limits every target to matching hosts or groups.
 
 ## Modules & Configuration
 
@@ -78,25 +85,26 @@ make services-up
 - pyinfra 2 (`requirements.txt`), which still runs on older system Pythons such as macOS's 3.9.
 
 ### Inventory Attributes
-- **`hostname`** (string): Used for hostname resolution within the overlay network.
+- **`hostname`** (string): Set as the system hostname; used for hostname resolution within the overlay network.
 - **`behind_nat`** (bool): Enables LAN service sharing via a Bastion node (Tailscale-like functionality).
   - Requires `wesher --advertise-addr`, which upstream wesher does not have: build [neospe/wesher](https://github.com/neospe/wesher) yourself and replace `assets/<arch>/wesher`.
   - Any node can be behind NAT, including the first node. Requires `public_ip` and SSH port forwarding.
   - Supports DynDNS by resolving `public_dns` during setup steps requiring public routable addresses.
 - **`services`** (list): Service names corresponding to subdirectories in `DOCKERFILES_PATH`.
   - If you have pet servers rather than cattle, put every host in its own group, each of which has its own compose YAML.
-  - **Traefik**: Requires `'traefik'` in the services list OR a `traefik_host` IP attribute. If neither is present, `services.py` installs `traefik-kop` without full configuration.
-- **`zone`**: Defines Garage data replication zones. Optimal setup requires minimum 3 nodes across 3 locations.
-- **SSH Configuration**:
-  - Set `ssh_forward_agent=True` to integrate with a local SSH agent.
-  - Keys can be managed by Pyinfra; other credentials may be handled via a vault (refer to Pyinfra documentation).
+  - **Traefik**: Requires `'traefik'` in the services list OR a `traefik_host` IP attribute (the inventory name of a bastion). If neither is present, `services.py` stops with a notice.
+- **`zone`**: Defines Garage data replication zones. `assets/garage.toml` keeps 2 copies of everything (`replication_factor`); optimal is a minimum of 3 nodes across 3 locations.
+- **SSH Configuration**: pyinfra's connection settings per host: `ssh_user`, `ssh_port` and `ssh_key` (path to the private key; `ssh_key_password` if it has one).
+  - Without `ssh_key`, pyinfra uses your SSH agent and the default keys in `~/.ssh`.
+  - Hosts never connect to each other over SSH; everything goes through your machine. Other credentials may be handled via a vault (refer to Pyinfra documentation).
 
 ### Services
 - **Assumptions**:
   - `DOCKERFILES_PATH` is defined in the environment or Makefile.
   - Structure: `DOCKERFILES_PATH/<service>/Dockerfile` and `DOCKERFILES_PATH/<inventory-group>.yml`.
 - **Variables**: The group compose file can contain templated variables: `<< OVERLAY_IP >>` and `<< HOSTNAME >>` are filled in per host, everything else comes from the environment (or another secrets handling system feeding it). Examples: `<< GARAGE_KEY >>`, `<< GARAGE_SECRET >>`, `<< REDIS_PWD >>`, `<< POSTGRES_PWD >>`, `<< SMTP_PWD >>`.
-- **Traefik**: Includes CrowdSec integration (with Docker-specific config). `traefik-kop` requires Redis running at the `traefik_host`.
+- **Traefik**: Includes CrowdSec integration (with Docker-specific config). Debian's `crowdsec-firewall-bouncer` package runs in nftables mode, which covers host-network containers; the packagecloud package runs in iptables mode, for which the bouncer is added to the `DOCKER-USER` chain.
+- **traefik-kop**: Requires Redis running on the `traefik_host`, reachable over the overlay, and the same `REDIS_PWD` when running `services`. It is started by `services-up`.
 - **Docker**: Uses host network mode. Services are configured to run on the overlay network. `services.py` dynamically injects overlay hostname and IP into Compose files (see Variables).
 
 ### Deployment Notes
