@@ -1,66 +1,67 @@
 
 import os
+import re
 import sys
-import requests
-from bs4 import BeautifulSoup
+import subprocess
 from pyinfra import host
-from pyinfra.operations import files
+from pyinfra.operations import files, server
 
 
 # install docker
 
 print('collecting files')
 
-# find out debian codename
+# find out debian codename and architecture
 cmd_stdout = host.run_shell_command('lsb_release -a')[1]
 for line in cmd_stdout:
     if line.startswith('Codename:'):
         codename = line.split()[1]
+ARCH = {'x86_64': 'amd64', 'aarch64': 'arm64'}[host.run_shell_command('uname -m')[1][0]]
 assets_path = 'assets/'+codename+'/'
 
 # assert path
 if not os.path.exists(assets_path):
     os.mkdir(assets_path)
 
-# parse release directory listing
-url = 'https://download.docker.com/linux/debian/dists/'+codename+'/pool/stable/amd64/'
-response = requests.get(url).text
-soup = BeautifulSoup(response, 'html.parser')
+# parse release directory listing (curl honours ALL_PROXY)
+url = 'https://download.docker.com/linux/debian/dists/'+codename+'/pool/stable/'+ARCH+'/'
+response = subprocess.run(['curl', '-fsSL', url], capture_output=True, text=True).stdout
 
-packages = ['containerd.io', 'docker-ce', 'docker-ce-cli', 'docker-compose-plugin']
+packages = ['containerd.io', 'docker-ce', 'docker-ce-cli', 'docker-buildx-plugin', 'docker-compose-plugin']
 selected_packages = {}
-for a in soup.select('pre > a'):
-    if '_' in a.text:
-        name, version, _ = a.text.split('_')
-        if name in packages:
-            if name in selected_packages.keys():
-                vv = version.split('.')
-                vv_pre = selected_packages[name].split('_')[1].split('.')
-                if int(vv[0]) >= int(vv_pre[0]) and int(vv[1]) >= int(vv_pre[1]):  # compare maj and min version numbers
-                    selected_packages[name] = a.text  # save latest version
-            else:
-                selected_packages[name] = a.text
+selected_versions = {}
+for filename in set(re.findall(r'href="([^"/]+\.deb)"', response)):
+    name, version, _ = filename.split('_')
+    if name in packages:
+        vv = [int(n) for n in re.findall(r'\d+', version.split('-')[0].split(':')[-1])]  # compare version numbers
+        if name not in selected_packages or vv > selected_versions[name]:
+            selected_packages[name] = filename  # save latest version
+            selected_versions[name] = vv
 
 # assert we found all packages
 if not all(p in selected_packages.keys() for p in packages):
-    print('error finding docker packages')
+    print('error finding docker packages:', url)
     exit(1)
 
 # cache packages in assets dir
 for filename in selected_packages.values():
     if not os.path.exists(assets_path+filename):
-        err = os.system('wget -P '+assets_path+' '+url+filename)
-        if err == 1:
+        err = os.system('curl -fsSL -o '+assets_path+filename+' '+url+filename)
+        if err != 0:
             print('error downloading packages:', url+filename)
             exit(1)
 
 # copy packages to host
-files.sync(
-    name='uploading files',
-    src=assets_path,
-    dest='/root',
-    add_deploy_dir=False
-)
+for filename in selected_packages.values():
+    files.put(
+        name='uploading '+filename,
+        src=assets_path+filename,
+        dest='/root/'+filename,
+    )
 
-# install packages
-host.run_shell_command('dpkg -i /root/*.deb && rm /root/*.deb')
+# install packages (apt-get -f pulls in their dependencies from debian)
+server.shell(
+    name='installing packages',
+    commands=['dpkg -i '+' '.join('/root/'+f for f in selected_packages.values())+' || apt-get -f -y install',
+              'rm '+' '.join('/root/'+f for f in selected_packages.values())]
+)

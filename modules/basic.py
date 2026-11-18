@@ -10,6 +10,9 @@ apt.update(name='update apt repositories')
 apt.upgrade(name='upgrade apt repositories')
 apt.packages(name='install packages', packages=['ufw', 'grep', 'sed'])
 
+if host.data.get('hostname'):
+    server.hostname(name='set hostname', hostname=host.data.get('hostname'))
+
 files.line(
     name='update logrotate config',
     path='/etc/logrotate.conf',
@@ -23,13 +26,14 @@ files.line(
     line='#SystemMaxUse=',
     replace='SystemMaxUse=100M'  # keep max. 100mb of logs
 )
-host.run_shell_command('systemctl restart systemd-journald')
+server.shell(name='restart journald', commands=['systemctl restart systemd-journald'])
 
 server.shell(
     name='setting up ufw',
     commands=[
         'ufw default deny incoming',
         'ufw default allow outgoing',
+        'ufw allow '+str(host.data.get('ssh_port', 22))+'/tcp',  # before enabling, or we lock ourselves out
         'ufw allow http',
         'ufw allow https',
         'ufw allow 3900',
@@ -37,7 +41,7 @@ server.shell(
         'ufw allow 3902',
         'ufw allow 7946',
         'ufw allow 51820',
+        'ufw allow in on wgoverlay',  # the overlay network is trusted: services, redis, garage rpc
         'ufw --force enable'
         ]
 )
-
