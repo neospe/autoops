@@ -3,7 +3,7 @@
 
 A multi-region data and service mesh operated by a Makefile. Designed for horizontal scalability across 150–200 nodes with minimal dependencies and strict supply-chain control.
 
-![Highly available data and service mesh](./architecture.png)
+![Highly available data and service mesh](./architecture.svg)
 
 ## Quickstart
 
