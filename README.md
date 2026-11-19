@@ -110,12 +110,19 @@ make services-up
 - **Health checks**: Give each service a Traefik health check via labels (see `examples/dockerfiles/worker.yml`); a worker that stops answering is then out of rotation within seconds instead of running requests into timeouts.
 - **One service on several workers**: add the label `kop.merge-lbs=true`, so traefik-kop appends each worker to the service's load balancer instead of replacing it.
 - **TLS**: The example bastion gets certificates from Let's Encrypt (HTTP challenge, stored in `/containers/traefik/acme.json`) for the `Host()` rules of the published routers, and redirects HTTP to HTTPS.
+  - With several bastions, the HTTP challenge fails at random: Let's Encrypt may ask a different bastion than the one that ordered the certificate. Use the DNS challenge instead, built into Traefik for most DNS providers: replace the `httpchallenge` flag with `--certificatesresolvers.le.acme.dnschallenge.provider=<provider>` and pass the provider's API token in the container's environment (see Traefik's list of providers). Each bastion then gets its own certificates; Let's Encrypt allows 5 identical certificates per week, enough for a handful of bastions.
 - **Docker**: Uses host network mode. Services are configured to run on the overlay network. `services.py` dynamically injects overlay hostname and IP into Compose files (see Variables).
 
 ### Deployment Notes
 - The `deploy` target builds the new image on all hosts in parallel, then swaps the containers one host at a time and waits until each new container runs (and is healthy, if it has a healthcheck). A service on several hosts stays reachable; on a single host it is gone for a second or two.
 - The `deploy` target strictly rebuilds containers; it does not update Dockerfiles or assets. Assumes Dockerfiles pull updates from internal version control or object stores.
 - To update Dockerfiles: Run `make DOCKERFILES_PATH="../dockerfiles" services`.
+
+### Rotating Secrets
+- **Redis password**: run `services` and `services-up` with a new `REDIS_PWD`. Redis, Traefik and traefik-kop restart with it; routes stay in Redis meanwhile, so there is about a second without Traefik per bastion.
+- **Garage RPC secret**: `make rotate KEY=garage-rpc` writes a new `assets/garage-rpc-secret` and restarts Garage on all nodes in the same step (nodes with different secrets can't talk to each other, so don't use `GROUP` here).
+- **S3 key**: `make rotate KEY=s3 FIRST_IP=...` creates a key `autoops-<date>` with the same access to the `autoops` bucket. Hand it to your services (e.g. `<< GARAGE_KEY >>` and `<< GARAGE_SECRET >>`, then `services` and `services-up`), then delete the old one with `make rotate KEY=s3 FIRST_IP=... RETIRE=<key id>`.
+- The wesher cluster key is not rotated: a new one means rebuilding the overlay (stop wesher, remove its state, run `nodes` again).
 
 ## Extendability
 

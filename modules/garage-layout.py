@@ -38,7 +38,7 @@ if str(host) == first_node.name:
     else:
         print('no staged layout changes')
 
-    cmd_stdout = host.run_shell_command('garage key info autoops')
+    cmd_stdout = host.run_shell_command('garage bucket info autoops')  # not the key: it may have been rotated
     if not cmd_stdout[0]:
         print('creating key: garage key create autoops')
         cmd_stdout = host.run_shell_command('garage key create autoops')[1]

@@ -26,6 +26,9 @@ deploy:
 care:
 	$(PYINFRA) inventory.py modules/care.py $(LIMIT)
 
+rotate:
+	KEY=$(KEY) FIRST_IP=$(FIRST_IP) RETIRE=$(RETIRE) $(PYINFRA) inventory.py modules/rotate.py $(LIMIT)
+
 # prebuilt binaries for assets/x86_64 and assets/aarch64, checked against assets/SHA256SUMS
 # (curl honours ALL_PROXY, e.g. ALL_PROXY=socks5h://127.0.0.1:9050 make assets)
 assets:
@@ -42,4 +45,4 @@ assets:
 check:
 	python3 -m py_compile modules/*.py
 
-.PHONY: nodes services services-up deploy care assets check
+.PHONY: nodes services services-up deploy care rotate assets check
