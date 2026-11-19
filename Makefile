@@ -26,6 +26,10 @@ deploy:
 care:
 	$(PYINFRA) inventory.py modules/care.py $(LIMIT)
 
+rebuild-overlay:
+	$(PYINFRA) inventory.py modules/wesher-reset.py
+	FIRST_IP=$(FIRST_IP) $(PYINFRA) inventory.py modules/wesher.py
+
 rotate:
 	KEY=$(KEY) FIRST_IP=$(FIRST_IP) RETIRE=$(RETIRE) $(PYINFRA) inventory.py modules/rotate.py $(LIMIT)
 
@@ -45,4 +49,4 @@ assets:
 check:
 	python3 -m py_compile modules/*.py
 
-.PHONY: nodes services services-up deploy care rotate assets check
+.PHONY: nodes services services-up deploy care rebuild-overlay rotate assets check

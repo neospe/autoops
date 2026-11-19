@@ -122,7 +122,7 @@ make services-up
 - **Redis password**: run `services` and `services-up` with a new `REDIS_PWD`. Redis, Traefik and traefik-kop restart with it; routes stay in Redis meanwhile, so there is about a second without Traefik per bastion.
 - **Garage RPC secret**: `make rotate KEY=garage-rpc` writes a new `assets/garage-rpc-secret` and restarts Garage on all nodes in the same step (nodes with different secrets can't talk to each other, so don't use `GROUP` here).
 - **S3 key**: `make rotate KEY=s3 FIRST_IP=...` creates a key `autoops-<date>` with the same access to the `autoops` bucket. Hand it to your services (e.g. `<< GARAGE_KEY >>` and `<< GARAGE_SECRET >>`, then `services` and `services-up`), then delete the old one with `make rotate KEY=s3 FIRST_IP=... RETIRE=<key id>`.
-- The wesher cluster key is not rotated: a new one means rebuilding the overlay (stop wesher, remove its state, run `nodes` again).
+- **wesher cluster key**: `make rebuild-overlay FIRST_IP=...` stops wesher and removes its state on all nodes, then builds a new overlay with a new key. Overlay IPs come from the hostnames and stay the same, so nothing else needs reconfiguring, but everything on the overlay is cut off for about 40 seconds. Also the way out when the overlay gets into a bad state.
 
 ## Extendability
 
